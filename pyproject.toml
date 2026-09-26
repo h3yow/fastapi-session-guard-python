@@ -6,6 +6,27 @@ dependencies = [
     "fastapi[standard]>=0.141.1",
 ]
 
+[dependency-groups]
+dev = [
+    "httpx>=0.28.0",
+    "pytest>=8.4.0",
+    "pytest-asyncio>=0.24.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
 [[tool.uv.index]]
 url = "https://mirrors.aliyun.com/pypi/simple/"
 default = true
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "RUF"]
+# B008: FastAPI 的 Depends(...) / require_role(...) 依赖注入默认值是框架标准模式
+# RUF002/RUF003: 中文文档与注释中的全角标点
+ignore = ["B008", "RUF002", "RUF003"]
