@@ -66,9 +66,18 @@ def get_session(request: Request) -> Session:
         _deny(request, 401, DenyReason.SESSION_REVOKED, "unknown or rotated token")
     now = time.time()
     if session.revoked:
+        # Eviction by the per-account cap is reported distinctly; every
+        # other revocation (logout, replay) stays SESSION_REVOKED.
+        if session.revoke_reason == DenyReason.SESSION_EVICTED.value:
+            _deny(request, 401, DenyReason.SESSION_EVICTED, "evicted by session cap")
         _deny(request, 401, DenyReason.SESSION_REVOKED, session.revoke_reason or "")
     if now >= session.access_expires_at:
         _deny(request, 401, DenyReason.SESSION_EXPIRED, "access token expired")
+    # Account state is checked live so disable/enable takes effect
+    # immediately for all existing sessions, without re-login.
+    user = ctx.users.get(session.username)
+    if user is None or user.disabled:
+        _deny(request, 401, DenyReason.ACCOUNT_DISABLED, f"user={session.username}")
     logger.info("allow request_id=%s path=%s user=%s", rid, request.url.path, session.username)
     return session
 

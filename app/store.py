@@ -35,6 +35,18 @@ class UserStore:
                 raise KeyError(username)
             self._users[username] = replace(user, permissions=frozenset(permissions))
 
+    def set_disabled(self, username: str, disabled: bool) -> None:
+        """Flip a user's disabled flag atomically.
+
+        Existing sessions are not mutated; the session/refresh layers check
+        the flag at request time so the change takes effect immediately.
+        """
+        with self._lock:
+            user = self._users.get(username)
+            if user is None:
+                raise KeyError(username)
+            self._users[username] = replace(user, disabled=disabled)
+
 
 class SessionStore:
     def __init__(self) -> None:
@@ -84,3 +96,9 @@ class SessionStore:
         with self._lock:
             sid = self._used_refresh.get(token)
             return self._by_id.get(sid) if sid else None
+
+    def list_by_user(self, username: str) -> list[Session]:
+        """All sessions of one account, ordered by issued_seq (oldest first)."""
+        with self._lock:
+            sessions = [s for s in self._by_id.values() if s.username == username]
+        return sorted(sessions, key=lambda s: s.issued_seq)
