@@ -35,12 +35,25 @@ class UserStore:
                 raise KeyError(username)
             self._users[username] = replace(user, permissions=frozenset(permissions))
 
+    def set_disabled(self, username: str, disabled: bool) -> None:
+        """Enable/disable an account atomically.
+
+        Existing sessions are not touched: the disabled flag is evaluated at
+        request time, so the change takes effect immediately for all of them.
+        """
+        with self._lock:
+            user = self._users.get(username)
+            if user is None:
+                raise KeyError(username)
+            self._users[username] = replace(user, disabled=disabled)
+
 
 class SessionStore:
     def __init__(self) -> None:
         self._by_id: dict[str, Session] = {}
         self._by_access: dict[str, str] = {}
         self._by_refresh: dict[str, str] = {}
+        self._by_user: dict[str, set[str]] = {}
         # Rotated-out refresh tokens -> session_id, kept for replay detection.
         self._used_refresh: dict[str, str] = {}
         self._lock = threading.RLock()
@@ -60,6 +73,7 @@ class SessionStore:
             self._by_id[session.session_id] = session
             self._by_access[session.access_token] = session.session_id
             self._by_refresh[session.refresh_token] = session.session_id
+            self._by_user.setdefault(session.username, set()).add(session.session_id)
 
     def get(self, session_id: str) -> Session | None:
         with self._lock:
@@ -84,3 +98,22 @@ class SessionStore:
         with self._lock:
             sid = self._used_refresh.get(token)
             return self._by_id.get(sid) if sid else None
+
+    # -- per-user session management --------------------------------------
+
+    def list_for_user(self, username: str) -> list[Session]:
+        """All sessions ever issued to the user (including dead ones).
+
+        Active filtering is applied by the service layer, which decides what
+        "active" means while holding the transaction lock.
+        """
+        with self._lock:
+            return [self._by_id[sid] for sid in self._by_user.get(username, set())
+                    if sid in self._by_id]
+
+    def active_for_user(self, username: str, now: float) -> list[Session]:
+        with self._lock:
+            return [
+                s for s in self.list_for_user(username)
+                if not s.revoked and not s.evicted and now < s.refresh_expires_at
+            ]

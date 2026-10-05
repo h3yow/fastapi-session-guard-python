@@ -35,14 +35,18 @@ def seed_users() -> UserStore:
 
 
 def create_app(users: UserStore | None = None, access_ttl: float = 300.0,
-               refresh_ttl: float = 3600.0) -> FastAPI:
+               refresh_ttl: float = 3600.0,
+               max_sessions_per_user: int = 5) -> FastAPI:
     app = FastAPI(title="fastapi-session-guard")
     user_store = users or seed_users()
     session_store = SessionStore()
     app.state.ctx = AppContext(
         users=user_store,
         sessions=session_store,
-        auth=AuthService(user_store, session_store, access_ttl, refresh_ttl),
+        auth=AuthService(
+            user_store, session_store, access_ttl, refresh_ttl,
+            max_sessions_per_user=max_sessions_per_user,
+        ),
     )
     app.include_router(router)
     return app

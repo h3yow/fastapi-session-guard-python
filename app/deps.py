@@ -64,11 +64,21 @@ def get_session(request: Request) -> Session:
     session = ctx.sessions.get_by_access_token(token)
     if session is None:
         _deny(request, 401, DenyReason.SESSION_REVOKED, "unknown or rotated token")
-    now = time.time()
+    # Session terminal states first: they stay stable even if the account
+    # record later changes.
+    if session.evicted:
+        _deny(request, 401, DenyReason.SESSION_EVICTED, "evicted by active-session cap")
     if session.revoked:
         _deny(request, 401, DenyReason.SESSION_REVOKED, session.revoke_reason or "")
+    now = time.time()
     if now >= session.access_expires_at:
         _deny(request, 401, DenyReason.SESSION_EXPIRED, "access token expired")
+    # Backend account state is evaluated live: disabling/enabling an account
+    # takes effect for all existing sessions without re-login.
+    user = ctx.users.get(session.username)
+    if user is None or user.disabled:
+        _deny(request, 401, DenyReason.ACCOUNT_DISABLED,
+              f"user={session.username} disabled")
     logger.info("allow request_id=%s path=%s user=%s", rid, request.url.path, session.username)
     return session
 

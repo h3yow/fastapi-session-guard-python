@@ -56,6 +56,21 @@ def users() -> UserStore:
 
 
 @pytest.fixture
+def app_factory(users):
+    created = []
+
+    def _factory(max_sessions_per_user: int = 5):
+        app = create_app(
+            users=users, access_ttl=300.0, refresh_ttl=3600.0,
+            max_sessions_per_user=max_sessions_per_user,
+        )
+        created.append(app)
+        return app
+
+    return _factory
+
+
+@pytest.fixture
 def app(users):
     return create_app(users=users, access_ttl=300.0, refresh_ttl=3600.0)
 
@@ -65,8 +80,18 @@ def client(app):
     return TestClient(app, raise_server_exceptions=True)
 
 
-def login(client, username, password):
-    return client.post("/login", json={"username": username, "password": password})
+def login(client, username, password, source=""):
+    body = {"username": username, "password": password}
+    if source:
+        body["source"] = source
+    return client.post("/login", json=body)
+
+
+def bearer(token, request_id=None):
+    headers = {"Authorization": f"Bearer {token}"}
+    if request_id is not None:
+        headers["X-Request-ID"] = request_id
+    return headers
 
 
 def auth_headers(token, request_id):

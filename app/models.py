@@ -15,6 +15,9 @@ class DenyReason(str, enum.Enum):
     SESSION_REVOKED = "session_revoked"
     REFRESH_REUSED = "refresh_reused"
     FORBIDDEN = "forbidden"  # authenticated but lacks required permission
+    ACCOUNT_DISABLED = "account_disabled"  # account disabled in the backend after login
+    SESSION_EVICTED = "session_evicted"  # session dropped by the per-user active-session cap
+    SESSION_NOT_FOUND = "session_not_found"  # listing/logout target missing or owned by someone else
 
 
 @dataclass(frozen=True)
@@ -33,8 +36,11 @@ class Session:
     refresh_token: str
     access_expires_at: float
     refresh_expires_at: float
+    source: str = ""  # client/device identifier supplied at login
+    issued_at: float = 0.0  # original login time, preserved across rotation
     refresh_used: bool = False
     revoked: bool = False
+    evicted: bool = False  # dropped by the per-user active-session cap
     revoke_reason: str | None = None
 
 
